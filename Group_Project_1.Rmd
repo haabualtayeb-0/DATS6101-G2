@@ -1,0 +1,283 @@
+---
+title: "Introduction to Data Science Project 1"
+author: "Group 2"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: show
+    number_sections: False
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, results = 'markup', message = FALSE)
+options(scientific=T, digits = 3) 
+```
+
+```{r ezids, include=F}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(forecast)
+library(sp)
+library(caret)
+
+```
+
+# Explore and Clean the Data
+
+```{r, echo=TRUE}
+data <- read.csv("Crime_Incidents_in_2024.csv")
+str(data)
+```
+```{r, echo=TRUE}
+head(data, 5)
+```
+
+
+# Question 1: Frequency of crime across neighborhoods
+
+```{r, echo=TRUE}
+neighborhood_crime_frequency <- data %>%
+  group_by(NEIGHBORHOOD_CLUSTER) %>%
+  summarise(crime_frequency = n()) %>%
+  arrange(desc(crime_frequency))
+```
+
+
+```{r, echo=TRUE}
+# Visualize crime frequency using a bar chart
+ggplot(neighborhood_crime_frequency, 
+       aes(x = NEIGHBORHOOD_CLUSTER, 
+           y = crime_frequency)) + 
+  geom_bar(stat = "identity") + 
+  theme_classic() + 
+  labs(title = "Crime Frequency by Neighborhood", 
+       x = "Neighborhood", 
+       y = "Crime Frequency") + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) + 
+  scale_x_discrete(expand = c(0.0001, 0.0001))
+
+
+```
+```{r, echo=TRUE}
+# 1. Crime frequency across different neighborhoods
+crime_by_neighborhood <- data %>%
+  group_by(NEIGHBORHOOD_CLUSTER) %>%
+  summarise(Total_Crimes = n(), .groups = "drop") %>%
+  arrange(desc(Total_Crimes))
+
+# Plot crime frequency by neighborhood
+ggplot(crime_by_neighborhood, aes(x = reorder(NEIGHBORHOOD_CLUSTER, -Total_Crimes), y = Total_Crimes)) + 
+  geom_bar(stat = "identity", fill = "darkblue") + 
+  theme_classic() + 
+  labs(title = "Crime Frequency Across Neighborhoods in DC - 2024", x = "Neighborhood Cluster", y = "Total Crimes") + 
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size = 8)) + 
+  scale_x_discrete(expand = c(0.0001, 0.0001))
+
+
+```
+
+
+```{r, echo=TRUE}
+
+# Step 3: Group by NEIGHBORHOOD_CLUSTER and count the number of crimes
+crime_summary <- data %>%
+  group_by(NEIGHBORHOOD_CLUSTER) %>%
+  summarise(crime_frequency = n())
+
+# Step 4: Calculate the variance
+variance <- var(crime_summary$crime_frequency)
+
+# Step 5: Calculate the standard deviation
+standard_deviation <- sd(crime_summary$crime_frequency)
+
+# Step 6: Print the results
+cat("Variance of Crime Frequencies:", variance, "\n")
+cat("Standard Deviation of Crime Frequencies:", standard_deviation, "\n")
+
+```
+```{r, echo=TRUE}
+library(e1071)
+library(dplyr)
+
+# Step 3: Summarize crime frequency by NEIGHBORHOOD_CLUSTER
+crime_summary <- data %>%
+  group_by(NEIGHBORHOOD_CLUSTER) %>%
+  summarise(crime_frequency = n())  # Count occurrences per neighborhood
+
+# Step 4: Calculate skewness
+crime_skewness <- skewness(crime_summary$crime_frequency)
+
+# Step 5: Print the skewness value
+cat("Skewness of Crime Frequency Distribution:", crime_skewness, "\n")
+
+```
+
+# Question 2: Time of year with highest and lowest crime rates
+
+```{r, echo=TRUE}
+monthly_crime_rate <- data %>%
+  mutate(MONTH = format(as.Date(REPORT_DAT), "%m")) %>%
+  group_by(MONTH) %>%
+  summarise(crime_rate = n()) %>%
+  arrange(desc(crime_rate))
+```
+
+```{r, echo=TRUE}
+ggplot(monthly_crime_rate, aes(x = MONTH, y = crime_rate)) + 
+  geom_point() + 
+  theme_classic() + 
+  labs(title = "Crime Rate by Month", x = "Month", y = "Crime Rate")
+
+```
+# Question 3: Most common types of crime reported
+
+
+```{r, echo=TRUE}
+crime_type_frequency <- data %>%
+  group_by(OFFENSE) %>%
+  summarise(frequency = n()) %>%
+  arrange(desc(frequency))
+
+```
+
+```{r, echo=TRUE}
+ggplot(crime_type_frequency, aes(x = OFFENSE, y = frequency)) + 
+  geom_bar(stat = "identity") + 
+  theme_classic() + 
+  labs(title = "Crime Type Frequency", x = "Crime Type", y = "Frequency") + 
+  scale_x_discrete(expand = c(0.2, 0.2)) + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+```
+# Question 4: Correlation between time of day and crime type
+
+
+```{r, echo=TRUE}
+
+data$HOUR <- format(as.Date(data$REPORT_DAT), "%H")
+hourly_crime_type_frequency <- data %>%
+  group_by(HOUR, OFFENSE) %>%
+  summarise(frequency = n(), .groups = "drop")
+
+```
+
+```{r, echo=TRUE}
+
+library(pheatmap)
+pheatmap(hourly_crime_type_frequency_cast, 
+         main = "Correlation between Time of Day and Crime Type", 
+         cluster_rows = FALSE, 
+         cluster_cols = FALSE)
+
+
+```
+# Question 5: Neighborhoods with highest rates of homicide
+
+```{r, echo=TRUE}
+homicide_data <- data %>%
+  filter(OFFENSE == "Homicide")
+neighborhood_homicide_frequency <- homicide_data %>%
+  group_by(NEIGHBORHOOD_CLUSTER) %>%
+  summarise(homicide_frequency = n()) %>%
+  arrange(desc(homicide_frequency))
+
+```
+
+```{r, echo=TRUE}
+
+
+# Step 2: Filter for homicide offenses
+homicide_data <- data %>%
+  filter(OFFENSE == "HOMICIDE")
+
+# Step 3: Summarize homicides by neighborhood
+neighborhood_homicide_summary <- homicide_data %>%
+  group_by(NEIGHBORHOOD_CLUSTER) %>%
+  summarise(homicide_count = n()) %>%
+  arrange(desc(homicide_count))  # Sort in descending order
+
+# Step 4: Print the top neighborhoods with the highest homicide counts
+print(head(neighborhood_homicide_summary))  # Display the top neighborhoods
+
+# Step 5 (Optional): Visualize homicide counts by neighborhood
+ggplot(neighborhood_homicide_summary, aes(x = reorder(NEIGHBORHOOD_CLUSTER, -homicide_count), 
+                                          y = homicide_count, fill = NEIGHBORHOOD_CLUSTER)) +
+  geom_col() +
+  theme_classic() +
+  labs(title = "Homicide Counts by Neighborhood in DC", 
+       x = "Neighborhood Cluster", 
+       y = "Homicide Count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_brewer(palette = "Set3")
+
+
+```
+
+# Analyze the spatial distribution using latitude and longitude:
+
+```{r, echo=TRUE}
+# Check the range of latitude and longitude
+range(data$LATITUDE, na.rm = TRUE)
+range(data$LONGITUDE, na.rm = TRUE)
+
+# Optional: Use ggplot2 for geographic visualization if you have map boundaries
+ggplot(data, aes(x = LONGITUDE, y = LATITUDE)) +
+  geom_point(alpha = 0.5) +
+  theme_minimal() +
+  labs(title = "Geographic Distribution of Incidents", x = "Longitude", y = "Latitude")
+
+```
+
+
+
+# Identifying missing values and Outliers
+
+```{r, echo=TRUE}
+# Missing values in LATITUDE and LONGITUDE
+missing_geolocation <- sum(is.na(data$LATITUDE) | is.na(data$LONGITUDE))
+print(paste("Missing geolocation data:", missing_geolocation))
+
+# Identify outliers in LATITUDE and LONGITUDE
+summary(data$LATITUDE)
+summary(data$LONGITUDE)
+
+```
+- The latitude values range from 38.8 to 39.0, with a median and mean value of around 38.9 while the longitude values range from  -77.1 to -77.0, with a median and mean value of around -77.0.
+
+
+# T-test Comparing mean latitude between two shifts (Midnight and Day)
+```{r, echo=TRUE}
+
+t_test_data <- data %>%
+  filter(SHIFT %in% c("MIDNIGHT", "DAY"))  
+
+t_test_result <- t.test(LATITUDE ~ SHIFT, data = t_test_data)  
+print(t_test_result)
+
+
+```
+The results show that there is no significant difference as the p-value (0.1) is greater than the typical significance level (0.05) showing that there is no statistically significant difference in the means of LATITUDE between the DAY and MIDNIGHT groups. Furthermore, the 95% confidence interval (-0.06121, 0.00866) overlaps with 0 and the sample estimates show that the mean LATITUDE values for both DAY and MIDNIGHT groups are equal (38.9)
+
+# Anova Comparing more than two groups : Comparing mean latitude across neighborhoods
+
+```{r, echo=TRUE}
+anova_result <- aov(LATITUDE ~ NEIGHBORHOOD_CLUSTER, data = data)
+summary(anova_result)
+```
+
+# Chi-square evaluating relationship between two categorical variables
+```{r, echo=TRUE}
+# Create a contingency table
+contingency_table <- table(data$OFFENSE, data$SHIFT)
+
+# Perform the chi-square test
+chi_square_result <- chisq.test(contingency_table)
+print(chi_square_result)
+
+```
