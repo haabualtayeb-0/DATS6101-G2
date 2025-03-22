@@ -1,0 +1,413 @@
+---
+title: "Project 1: Crime Pattern Analysis in Washington, DC, US"
+author: " Joyce, Sadheen and Hala"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: hide
+    number_sections: false
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+
+```{r init, include=F}
+# The package "ezids" (EZ Intro to Data Science) includes some helper functions we developed for the course. 
+# Some of the frequently used functions are loadPkg(), xkabledply(), xkablesummary(), uzscale(), etc.
+# You will need to install it (once) from GitHub.
+# library(devtools)
+# devtools::install_github("physicsland/ezids")
+# Then load the package in your R session.
+library(ezids)
+```
+
+
+```{r setup, include=FALSE}
+# Some of common RMD options (and the defaults) are: 
+# include=T, eval=T, echo=T, results='hide'/'asis'/'markup',..., collapse=F, warning=T, message=T, error=T, cache=T, fig.width=6, fig.height=4, fig.dim=c(6,4) #inches, fig.align='left'/'center','right', 
+knitr::opts_chunk$set(warning = F, message = F)
+# Can globally set option for number display format.
+options(scientific=T, digits = 3) 
+# options(scipen=9, digits = 3) 
+```
+
+```{r}
+# install.packages("sf")
+# install.packages("dplyr")
+# install.packages("ggplot2")
+# install.packages("viridis")
+install.packages("lubridate", type = "source")
+```
+
+```{r}
+library(sf)
+library(dplyr)
+library(ggplot2)
+library(viridis)
+library(lubridate)
+```
+# <span style="color:navy"> I INTRODUCTION </span>
+
+## a. Background 
+
+Man is thought to have evolved from ancient behaviors in the way they think and do things with the need to leave comfortable and luxurious lives. The man's behavior has advanced in both negative and positive ways. With the need to live comfortably and without adequate resources to produce basic needs, there is a great push towards the negative behavior of humans leading to criminal offenses for various reasons. Crime is defined as any offense that violates the law of state and any behavior rejected by the society.  Historically, crime rates were relatively low. However, over time, there has been a sharp and concerning rise in criminal activity. This upward trend can be attributed to a multitude of factors and underlying social issues (Thotakura, 2011, p. 196-198). This study examines crime patterns in 2024, analyzing neighborhood variations, seasonal trends, and correlations between crime types, time of day, and homicide rates.
+
+## b. Research Questions
+
+1. How does the frequency of crime vary across different neighborhoods in DC during 2024?
+2. What time of year in 2024 saw the highest and lowest crime rates in DC?
+3. What are the most common types of crime reported in DC throughout 2024?
+4. Is there a significant correlation between the time of day and the type of crime reported?
+5. Which neighborhoods in DC have the highest rates of homicide?
+
+## c. Objectives
+
+Our main objective us to analyze crime trends and patterns in Washington D.C. during 2024.
+
+
+# <span style="color:navy">II. DATA DESCRIPTION </span>
+
+# a. Data Source 
+
+The crime data analyzed in this study was obtained from Open Data DC, a publicly available dataset managed by the Enterprise Data team in the Office of the Chief Technology Officer (OCTO). This dataset titled "Crime Incidents in 2024," contains 29,292 observations and provides comprehensive information on crime incidents reported in Washington D.C. during 2024 (Open Data DC, 2024).
+
+## b. Data Structure 
+
+The dataset used in this study consists of 29,292 observations, each representing a crime incident reported in Washington D.C. during 2024. The data is structured into several variables, some of the variables included are:
+
+- X - The x-coordinate of the crime incident location.
+
+- Y - The y-coordinate of the crime incident location.
+
+- CCN -  The Crime Code Number.
+
+- REPORT_DAT -  The date the crime incident was reported.
+
+- SHIFT - The shift during which the crime incident occurred.
+
+- METHOD -  The method used to commit the crime.
+
+- OFFENSE -  The type of offense committed.
+
+- NEIGHBORHOOD_CLUSTER - The neighborhood cluster where the crime incident occurred.
+
+- LATITUDE - The latitude of the crime incident location.
+
+- LONGITUDE - The longitude of the crime incident location.
+
+# <span style="color:navy"> III. METHODOLOGY </span>III. 
+
+## a. Data Cleaning: 
+
+We started by previewing the first six entries of the raw data to gain a clearer understanding of its structure:
+```{r, echo=TRUE}
+#Read the data
+
+crime_data <- read.csv("~/Desktop/Crime_Incidents_in_2024.csv", header = TRUE)
+head(crime_data)
+```
+
+
+Next, we began narrowing down the columns that are valuable to us and will help us answer our research questions more effectively:
+```{r}
+clean_crime_data <- crime_data[, c("OFFENSE","SHIFT", "LATITUDE", "LONGITUDE", "START_DATE", "END_DATE", "CENSUS_TRACT", "NEIGHBORHOOD_CLUSTER")]
+head(clean_crime_data)
+```
+
+
+Once we had identified and limited our attributes to only those that are valuable, we began the data clean-up process by identifying any NAs or empty values:
+```{r}
+missing_crime_data <- clean_crime_data == "" | is.na(clean_crime_data)
+colSums(missing_crime_data)
+```
+
+We confirmed that there are 6 entries missing a start date, 2,095 missing an end date, 13 missing a Census Tract, and 4 missing a neighborhood cluster. Since our starting dataset contained about 29,292 observations, we decided to exclude these NAs, as they would not have a drastic impact on our tests or further analysis.
+```{r}
+clean_crime_data_final <- clean_crime_data[!apply(is.na(clean_crime_data), 1, any), ]
+colSums(is.na(clean_crime_data_final))
+head(clean_crime_data_final)
+```
+## b. Data Transformation: 
+
+We formatted the START_DATE and END_DATE columns as POSIXct to ensure proper date-time recognition. Additionally, we extracted only the date component into START_DATE_only and END_DATE_only for easier date-based analysis.
+```{r}
+# Convert the START_DATE and END_DATE columns to POSIXct
+clean_crime_data_final$START_DATE <- ymd_hms(clean_crime_data_final$START_DATE)
+clean_crime_data_final$END_DATE <- ymd_hms(clean_crime_data_final$END_DATE)
+
+# Extract only the date portion (without time)
+clean_crime_data_final$START_DATE_only <- as.Date(clean_crime_data_final$START_DATE)
+clean_crime_data_final$END_DATE_only <- as.Date(clean_crime_data_final$END_DATE)
+
+# Check the first few rows to verify the conversion
+head(clean_crime_data_final[, c("START_DATE", "END_DATE", "START_DATE_only", "END_DATE_only")])
+
+```
+Prior to data transformation: 
+```{r}
+head(clean_crime_data_final[, c("START_DATE", "END_DATE")])
+head(clean_crime_data_final)
+```
+
+Post data transformation:
+```{r}
+head(clean_crime_data_final[, c("START_DATE_only", "END_DATE_only")])
+```
+
+In order to improve the data for visualization, we then grouped the crimes by month and year.
+```{r}
+clean_crime_data_final$Month <- month(clean_crime_data_final$START_DATE_only)
+clean_crime_data_final$Year <- year(clean_crime_data_final$START_DATE_only)
+
+head(clean_crime_data_final$Month)
+head(clean_crime_data_final$Year)
+```
+
+## c. Summary Statistics:: 
+
+We converted the offense, shift, and neighborhood cluster columns to factors using the factor() function, allowing R to treat these variables as categorical data. This is essential for accurate analysis and interpretation, ensuring that different offense types, shift times, and neighborhood clusters are recognized as distinct categories. Next, we applied the summary() function to generate an overview of the dataset, providing descriptive statistics such as means, medians, and counts for both numeric and categorical variables.
+
+Notable findings include that more crimes occur during the Day shift compared to Midnight, and Theft is the most common type of crime, with Theft/Other and Theft from Auto being the highest contributors. These findings prompted us to explore potential relationships between the type of offense and shift times, as well as investigate the safety of different neighborhoods. 
+
+```{r}
+clean_crime_data_final$OFFENSE <- factor(clean_crime_data_final$OFFENSE)
+clean_crime_data_final$SHIFT <- factor(clean_crime_data_final$SHIFT)
+clean_crime_data_final$NEIGHBORHOOD_CLUSTER <- factor(clean_crime_data_final$NEIGHBORHOOD_CLUSTER)
+summary(clean_crime_data_final)
+```
+
+# <span style="color:navy"> IV. RESULTS </span>III. 
+Once we've done an initial exploration of the structure of the data we decided to start exploring our initial research questions.
+
+*1. How does the frequency of crime vary across different neighborhoods in DC during 2024?*
+In 2024, crime frequency varies significantly across DC neighborhoods, with an average of 651 crimes per neighborhood but a median of 460, indicating that many neighborhoods experience fewer crimes than the average. The high variance of 309,940 suggests a wide disparity, with some neighborhoods experiencing disproportionately high crime rates compared to others.
+
+The minimum number of crimes recorded in a neighborhood was 3, while the maximum number reached 2,193, showing a large range in crime levels across the city.
+
+However, this analysis does not account for normalization based on neighborhood size or population. Larger neighborhoods may appear to have higher crime counts simply due to their size, while smaller neighborhoods may appear safer without considering their actual crime rate per capita. Therefore, while the data highlights crime distribution, it lacks the context needed to accurately compare neighborhoods of different sizes. A more nuanced analysis, factoring in neighborhood population and density, would be necessary for a clearer understanding of crime rates across the city.
+
+```{r}
+library(dplyr)
+
+crime_by_cluster <- clean_crime_data_final %>%
+  group_by(NEIGHBORHOOD_CLUSTER) %>%
+  summarise(Crime_Count = n())
+
+crime_by_cluster <- crime_by_cluster[order(-crime_by_cluster$Crime_Count), ]
+
+colnames(crime_by_cluster) <- c("NEIGHBORHOOD_CLUSTER", "Crime_Count")
+
+top_10 <- head(crime_by_cluster, 10)
+
+crime_mean <- mean(crime_by_cluster$Crime_Count)
+crime_median <- median(crime_by_cluster$Crime_Count)
+crime_variance <- var(crime_by_cluster$Crime_Count)
+
+cat("Mean Crime Count:", crime_mean, "\n")
+cat("Median Crime Count:", crime_median, "\n")
+cat("Variance in Crime Count:", crime_variance, "\n")
+
+library(ggplot2)  # Make sure ggplot2 is also loaded
+ggplot(top_10, aes(x = reorder(NEIGHBORHOOD_CLUSTER, -Crime_Count), y = Crime_Count)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  coord_flip() +
+  labs(title = "Top 10 DC Neighborhood Clusters by Crime Frequency in 2024",
+       x = "Neighborhood Cluster",
+       y = "Number of Crimes") +
+  theme_minimal()
+
+crime_stats <- crime_by_cluster %>%
+  summarise(
+    Min_Crime = min(Crime_Count),
+    Max_Crime = max(Crime_Count),
+  )
+
+print(crime_stats)
+
+```
+
+*2.What time of year in 2024 saw the highest and lowest crime rates in DC?*
+This visualization reveals that March has the lowest crime count with 2,064 incidents, while September has the highest with 2,755. The variation in crime rates between these months could be attributed to several factors. Seasonal effects, such as warmer weather encouraging more outdoor activities in September, may lead to higher crime opportunities. Special events or holidays, economic conditions, and changes in law enforcement or policies could also contribute to fluctuations.
+
+```{r}
+monthly_crimes_2024 <- filter(clean_crime_data_final, Year == 2024)
+monthly_crimes_2024 <- group_by(monthly_crimes_2024, Month)
+monthly_crimes_2024 <- summarise(monthly_crimes_2024, crime_count = n())
+
+highest_crime_month <- filter(monthly_crimes_2024, crime_count == max(crime_count))
+lowest_crime_month <- filter(monthly_crimes_2024, crime_count == min(crime_count))
+
+print(highest_crime_month)
+print(lowest_crime_month)
+
+ggplot(monthly_crimes_2024, aes(x = factor(Month), y = crime_count)) +
+  geom_bar(stat = "identity", fill = "skyblue", color = "black") +
+    labs(title = "Monthly Crime Counts in Washington D.C. (2024)",
+      x = "Month", y = "Number of Crimes") +
+  scale_x_discrete(labels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+*3.What are the most common types of crime reported in DC throughout 2024?*
+By analyzing the data, we determined that the most common crime in DC in 2024 is Theft/Other, with 12,831 incidents, followed by Theft from Auto (6,613) and Motor Vehicle Theft (5,104). Robbery accounts for 2,101 incidents, while Assault with a Dangerous Weapon has 1,022. Burglary is reported 1,000 times, and Homicide is the least frequent, with 179 incidents. Sex Abuse and Arson are less common, with 132 and 4 incidents reported. This made us wonder if there's any association between the type of crime and the time of day, as certain crimes may be more likely to occur at specific times.
+
+```{r}
+common_crimes_2024 <- filter(clean_crime_data_final, year(START_DATE) == 2024)
+common_crimes_2024 <- group_by(common_crimes_2024, OFFENSE)
+common_crimes_2024 <- summarise(common_crimes_2024, crime_count = n())
+common_crimes_2024 <- arrange(common_crimes_2024, desc(crime_count))
+
+head(common_crimes_2024, 10)
+
+ggplot(clean_crime_data_final, aes(x = OFFENSE, fill = OFFENSE)) +
+  geom_bar(stat = "count") +
+  labs(title = "Offense Overview in 2024", x = "Offense Type", y = "Count") +
+  theme_grey() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_brewer(palette = "Blues")
+
+clean_crime_data_final_counts <- clean_crime_data_final %>%
+  count(OFFENSE)
+
+ggplot(clean_crime_data_final_counts, aes(x = OFFENSE, y = n, fill = OFFENSE)) +
+   geom_boxplot() +
+    labs(title = "Offense Overview in 2024", x = "Offense Type", y = "Count") +
+    theme_grey() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    scale_fill_brewer(palette = "Blues")
+clean_crime_data_final_counts <- clean_crime_data_final %>%
+  count(OFFENSE)
+
+ggplot(clean_crime_data_final_counts, aes(x = OFFENSE, y = 1, fill = n)) +
+  geom_tile() + 
+  labs(title = "Offense Overview in 2024", x = "Offense Type", y = "Count") +
+  theme_grey() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+*4.Is there a significant correlation between the time of day and the type of crime reported?*
+We started our investigation by analyzing the total number of crimes reported across different police shifts (Day, Evening, and Midnight). The analysis revealed a larger frequency of crimes during the Day (11,507) and Evening (11,848) shifts compared to Midnight (5,939). However, with closer inspection of the histogram, we observed that while the crime frequency is higher during the Day and Evening shifts, the severity of crimes is more pronounced at Midnight, with incidents such as homicide and arson being more prevalent.
+
+```{r}
+crime_by_shift <- group_by(crime_data, SHIFT, OFFENSE)
+crime_by_shift <- summarise(crime_by_shift, Total_Crimes = n(), .groups = "drop")
+crime_by_shift <- arrange(crime_by_shift, desc(Total_Crimes))
+
+sum_crimes_by_shift <- crime_by_shift %>%
+  group_by(SHIFT) %>%
+  summarise(Total_Crimes = sum(Total_Crimes), .groups = "drop")
+
+print(sum_crimes_by_shift)
+
+ggplot(crime_by_shift, aes(x=SHIFT, y=Total_Crimes, fill=OFFENSE)) + 
+  geom_bar(stat="identity", position="dodge") + 
+  labs(title = "Crime Type by Time of Day",x = "Shift", y = "Count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_brewer(palette = "Blues")
+```
+
+To dive deeper into this finding, a Chi-square test was conducted to determine the significance of the relationship between the type of offense and the time of day. This test was chosen because it compares two categorical variables: `Offense` and `Shift`.
+
+### Hypotheses
+
+- **Null Hypothesis (H₀)**: Crime type is independent of shift.  
+  The proportion of each crime type is the same across shifts.
+
+- **Alternative Hypothesis (H₁)**: Crime type is dependent on shift.  
+  Some crime types occur more or less frequently at different times.
+
+### Chi-Square Test Results
+
+The p-value is less than 0.05 (`p < 2.2e-16`), which leads to the rejection of the null hypothesis and acceptance of the alternative hypothesis. This implies that the type of offense is dependent on the time of day.
+
+### Standardized Residuals
+
+To better understand the results, **standardized residuals** were examined. These residuals show the deviation of observed values from expected values, adjusted for the sample size. The following key trends were observed for each shift:
+
+## Key Findings
+
+### Day Shift:
+- **Theft/Other** and **Theft from Auto** are more frequent during the day, with high positive values (10.132 and 0.992, respectively), suggesting these crimes are more prevalent in daylight hours.
+- **Assault with a Dangerous Weapon**, **Robbery**, and **Homicide** show notably negative values (-10.476, -14.225, -8.571), indicating they are less frequent during the day compared to other shifts.
+
+### Evening Shift:
+- **Arson** and **Sex Abuse** exhibit positive values (1.087 and 0.867), implying these crimes are more likely to occur during the evening.
+- **Motor Vehicle Theft**, **Robbery**, and **Theft from Auto** have negative values (-2.223, -1.472, -6.132), indicating these crimes are less frequent in the evening compared to the other shifts.
+
+### Midnight Shift:
+- **Assault with a Dangerous Weapon**, **Homicide**, and **Robbery** show very high positive values (17.311, 24.213, 21.880), suggesting these crimes are disproportionately more common during the midnight shift.
+- **Theft/Other**, **Theft from Auto**, and **Burglary** show negative values (-15.388, -5.443, 6.953), which indicates these crimes are less common during the midnight hours.
+
+## Test Conclusion
+
+The Chi-square test and the standardized residuals analysis reveal that the type of crime is not uniformly distributed across shifts. Certain crimes, such as **Assault with a Dangerous Weapon** and **Homicide**, show a clear tendency to occur more often during the midnight shift, whereas crimes like **Theft/Other** are more common during the day. Understanding these patterns can help law enforcement allocate resources more effectively based on the time of day and the type of crime.
+
+```{r}
+if (!require(dplyr)) install.packages("dplyr", dependencies = TRUE)
+library(dplyr)
+
+
+crime_table <- table(crime_data$SHIFT, crime_data$OFFENSE)
+
+
+print(crime_table)
+
+
+chi_result <- chisq.test(crime_table)
+
+print(chi_result)
+chi_result$residuals 
+
+chi_result$residuals 
+install.packages("corrplot")
+library(corrplot)
+corrplot(chi_result$residuals, is.corr = FALSE, tl.col = "black", col = colorRampPalette(c("blue", "white", "darkgreen"))(200))
+```
+
+*5.Which neighborhoods in DC have the highest rates of homicide?*
+Since we determined that there is an association between the time of day and the type of offense, we wanted to further explore which neighborhoods are the most dangerous and should be avoided at night.
+
+Through our analysis, we identified that the neighborhood with the highest crime rate is 7408 (8) incidents - Garfield Heights. According to the Census Report for Garfield Heights, this neighborhood is located in the southeastern part of Washington, D.C., and is characterized by a predominantly residential area. The neighborhood has a mix of housing types, including single-family homes, rowhouses, and apartment buildings.
+
+Garfield Heights has faced challenges related to poverty, housing instability, and limited access to certain amenities, which may contribute to higher crime rates. This area has a diverse demographic, with a sizable portion of residents identifying as Black or African American. Despite these challenges, Garfield Heights also has community-driven efforts to improve safety and economic opportunities for its residents.
+
+```{r}
+homicide_data <- filter(clean_crime_data_final, grepl("Homicide", clean_crime_data_final$OFFENSE, ignore.case = TRUE))
+
+homicide_by_tract <- group_by(homicide_data, CENSUS_TRACT)
+homicide_by_tract <- summarise(homicide_by_tract, homicide_count = n())
+
+homicide_by_tract <- arrange(homicide_by_tract, desc(homicide_count))
+
+head(homicide_by_tract)
+
+highest_homicide_tract <- homicide_by_tract[1, ]
+lowest_homicide_tract <- homicide_by_tract[nrow(homicide_by_tract), ]
+
+print(highest_homicide_tract)
+print(lowest_homicide_tract)
+```
+             Df   Sum Sq  Mean Sq  F value   Pr(>F)  
+SHIFT        2 22011729 11005864   2.35      0.08  
+Residuals   10 46859432  4685943                   
+
+
+# VI. CONCLUSION
+
+## a. Summary
+
+This study analyzed crime patterns in Washington, D.C., in 2024, focusing on crime distribution across neighborhoods, prevalent crime types, time-based patterns, and correlations. The findings reveal that crime is unevenly distributed across neighborhoods, with some areas experiencing significantly higher crime rates. The theft was the most frequently reported crime, while homicide and assault were more common during the midnight shift. The time-based pattern indicated that September recorded the highest number of incidents, while March had the lowest. A statistical analysis confirmed a significant correlation between crime type and time of day, reinforcing the importance of time-sensitive law enforcement strategies.
+
+## b. Future Directions
+
+Future research could expand on these findings by incorporating socioeconomic variables such as unemployment rates, education levels, and income disparities to understand crime patterns more deeply. Additionally, machine learning models and linear regression analysis for predictive crime modeling could help forecast potential crime hotspots and uncover the influence of continuous predictors like time, population density, or resource allocation. Longitudinal studies analyzing crime trends over multiple years would provide valuable insights into the effectiveness of policy changes and law enforcement interventions.
+ 
+# VII. REFERENCES
+
+Thotakura, Dr. (2011). Crime: A Conceptual Understanding. Indian Journal of Applied Research. 4. 196-198. 10.15373/2249555X/MAR2014/58. 
+Lu, R., Willits, D., Stohr, M. K., Makin, D., Snyder, J., Lovrich, N., ... & Hemmens, C. (2021). The cannabis effect on crime: Time-series analysis of crime in Colorado and Washington State. Justice Quarterly, 38(4), 565-595.
+
