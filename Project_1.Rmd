@@ -1,0 +1,96 @@
+---
+title: "Project_1"
+author: "Sadheen Hossain"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: hide
+    number_sections: false
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+---
+
+library(ezids)
+library(tidyverse)
+library(ggplot2)
+install.packages("magrittr")
+library(magrittr)
+
+```{r}
+crime_data <- read.csv("Crime_Incidents_in_2024.csv", stringsAsFactors = FALSE)
+head(crime_data)
+```
+```{r}
+# 1. Crime frequency across different neighborhoods
+crime_by_neighborhood <- crime_data %>%
+  group_by(NEIGHBORHOOD_CLUSTER) %>%
+  summarise(Total_Crimes = n(), .groups = "drop") %>%
+  arrange(desc(Total_Crimes))
+
+# Plot crime frequency by neighborhood
+ggplot(crime_by_neighborhood, aes(x=reorder(NEIGHBORHOOD_CLUSTER, -Total_Crimes), y=Total_Crimes)) + 
+  geom_bar(stat="identity", fill="darkred") + 
+  theme(axis.text.x = element_text(angle=45, hjust=1)) + 
+  ggtitle("Crime Frequency Across Neighborhoods in DC - 2024")
+```
+```{r}
+# 2. Crime rates by time of year
+
+colnames(crime_data)[colnames(crime_data) %in% c("REPORT_DAT ", "report_dat", "Report Date")] <- "REPORT_DAT"
+crime_data <- crime_data %>% filter(!is.na(REPORT_DAT))
+
+# Number of crimes per month
+crime_by_month <- crime_data %>%
+  group_by(Month) %>%
+  summarise(Total_Crimes = n()) %>%
+  arrange(Month)
+
+# Plot crime rates by month
+ggplot(crime_by_month, aes(x=Month, y=Total_Crimes)) + 
+  geom_bar(stat="identity", fill="steelblue") + 
+  scale_y_continuous(expand = expansion(mult = c(0, 0.1))) +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  ggtitle("Crime Rates by Month in 2024")
+```
+```{r}
+crime_types <- crime_data %>%
+  group_by(OFFENSE) %>%
+  summarise(Total_Crimes = n()) %>%
+  arrange(desc(Total_Crimes))
+
+ggplot(crime_types, aes(x=reorder(OFFENSE, -Total_Crimes), y=Total_Crimes)) + 
+  geom_bar(stat="identity", fill="red") + 
+  theme(axis.text.x = element_text(angle=45, hjust=1)) + 
+  ggtitle("Most Common Crimes in 2024")
+```
+```{r}
+# 4. Correlation between time of day and crime type
+crime_by_shift <- crime_data %>%
+  group_by(SHIFT, OFFENSE) %>%
+  summarise(Total_Crimes = n(), .groups = "drop") %>%
+  arrange(desc(Total_Crimes))
+
+ggplot(crime_by_shift, aes(x=SHIFT, y=Total_Crimes, fill=OFFENSE)) + 
+  geom_bar(stat="identity", position="dodge") + 
+  ggtitle("Crime Type by Time of Day") +
+  theme_minimal()
+```
+
+```{r}
+# 5. Neighborhood clusters with highest homicide rates
+homicide_by_neighborhood <- crime_data %>%
+  filter(OFFENSE == "HOMICIDE") %>%
+  group_by(NEIGHBORHOOD_CLUSTER) %>%
+  summarise(Total_Homicides = n()) %>%
+  arrange(desc(Total_Homicides))
+
+ggplot(homicide_by_neighborhood, aes(x=reorder(NEIGHBORHOOD_CLUSTER, -Total_Homicides), y=Total_Homicides)) + 
+  geom_bar(stat="identity", fill="darkred") + 
+  theme(axis.text.x = element_text(angle=45, hjust=1)) + 
+  ggtitle("Neighborhood Clusters with Highest Homicide Rates")
+```
