@@ -35,11 +35,10 @@ options(scientific=T, digits = 3)
 ```
 
 ```{r}
-# install.packages("sf")
-# install.packages("dplyr")
-# install.packages("ggplot2")
-# install.packages("viridis")
-install.packages("lubridate", type = "source")
+#install.packages("sf")
+#install.packages("dplyr")
+#install.packages("viridis")
+#install.packages("lubridate", type = "source")
 ```
 
 ```{r}
@@ -106,7 +105,7 @@ We started by previewing the first six entries of the raw data to gain a clearer
 ```{r, echo=TRUE}
 #Read the data
 
-crime_data <- read.csv("~/Desktop/Crime_Incidents_in_2024.csv", header = TRUE)
+crime_data <- read.csv("Crime_Incidents_in_2024.csv", header = TRUE)
 head(crime_data)
 ```
 
@@ -347,26 +346,28 @@ To better understand the results, **standardized residuals** were examined. Thes
 The Chi-square test and the standardized residuals analysis reveal that the type of crime is not uniformly distributed across shifts. Certain crimes, such as **Assault with a Dangerous Weapon** and **Homicide**, show a clear tendency to occur more often during the midnight shift, whereas crimes like **Theft/Other** are more common during the day. Understanding these patterns can help law enforcement allocate resources more effectively based on the time of day and the type of crime.
 
 ```{r}
-if (!require(dplyr)) install.packages("dplyr", dependencies = TRUE)
+if (!require(dplyr)) 
+  install.packages("dplyr", dependencies = TRUE)
 library(dplyr)
 
+if (!require(corrplot)) 
+  install.packages("corrplot")
+library(corrplot)
 
 crime_table <- table(crime_data$SHIFT, crime_data$OFFENSE)
-
-
 print(crime_table)
 
-
 chi_result <- chisq.test(crime_table)
-
 print(chi_result)
-chi_result$residuals 
 
-chi_result$residuals 
-install.packages("corrplot")
-library(corrplot)
-corrplot(chi_result$residuals, is.corr = FALSE, tl.col = "black", col = colorRampPalette(c("blue", "white", "darkgreen"))(200))
+chi_result$residuals
+
+corrplot(chi_result$residuals, is.corr = FALSE, 
+          tl.col = "black", 
+          col = colorRampPalette(c("blue", "white", "darkgreen"))(200))
+
 ```
+
 
 *5.Which neighborhoods in DC have the highest rates of homicide?*
 Since we determined that there is an association between the time of day and the type of offense, we wanted to further explore which neighborhoods are the most dangerous and should be avoided at night.
