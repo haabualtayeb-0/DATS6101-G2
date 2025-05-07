@@ -44,36 +44,42 @@ poverty_data <- poverty_data %>%
 ## SMART Q1: Poverty vs Felony Count
 
 ```{r smart-q1}
-# Crosstab
-felony_by_shift <- crime_data %>%
-  filter(OFFENSE == "FELONY") %>%
-  count(SHIFT, METHOD)
+felony_by_ward <- crime_data %>%
+  filter(str_detect(OFFENSE, "FELONY")) %>%
+  count(WARD, name = "felony_count")
 
-# Stacked bar plot
-ggplot(felony_by_shift, aes(x = SHIFT, y = n, fill = METHOD)) +
-  geom_bar(stat = "identity") +
-  labs(title = "Felony Type by Police Shift", x = "Police Shift", y = "Count", fill = "Method") +
-  theme_minimal()
+crime_poverty <- left_join(felony_by_ward, poverty_data, by = "WARD") %>%
+  filter(!is.na(Poverty_Rate), !is.na(felony_count))
 
+# Diagnostic check
+print("Preview of joined data:")
+print(head(crime_poverty, 10))
+summary(crime_poverty$Poverty_Rate)
+summary(crime_poverty$felony_count)
+
+# Plot
+if(nrow(crime_poverty) > 0) {
+  ggplot(crime_poverty, aes(x = Poverty_Rate, y = felony_count)) +
+    geom_point(color = "tomato") +
+    geom_smooth(method = "lm", se = FALSE, color = "steelblue") +
+    labs(title = "Felony Count vs Poverty Rate by Ward",
+         x = "Poverty Rate", y = "Felony Count")
+} else {
+  print("No data available to plot. Please check Poverty_Rate values.")
+}
 ```
 
 ## SMART Q2: Felony Type by Police Shift
 
 ```{r smart-q2}
-# Assuming your dataset has poverty_rate, unemployment_rate, etc.
-model_data <- crime_data %>%
-  filter(OFFENSE == "FELONY") %>%
-  group_by(NEIGHBORHOOD) %>%
-  summarise(
-    FELONY_COUNT = n(),
-    POVERTY_RATE = mean(POVERTY_RATE, na.rm = TRUE),
-    UNEMPLOYMENT_RATE = mean(UNEMPLOYMENT_RATE, na.rm = TRUE),
-    EDUCATION_LEVEL = mean(EDUCATION_LEVEL, na.rm = TRUE)
-  )
+felony_by_shift <- crime_data %>%
+  filter(str_detect(OFFENSE, "FELONY")) %>%
+  count(SHIFT, METHOD)
 
-# Linear regression
-model <- lm(FELONY_COUNT ~ POVERTY_RATE + UNEMPLOYMENT_RATE + EDUCATION_LEVEL, data = model_data)
-summary(model)
+ggplot(felony_by_shift, aes(x = SHIFT, y = n, fill = METHOD)) +
+  geom_col(position = "dodge") +
+  labs(title = "Felony Method by Police Shift",
+       x = "Shift", y = "Number of Felonies")
 
 ```
 
