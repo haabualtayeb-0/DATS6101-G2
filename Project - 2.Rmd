@@ -1,0 +1,273 @@
+---
+title: "Comprehensive Analysis of Criminal Pattern in Washington, DC, US"
+author: "Group 2"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: hide
+    number_sections: False
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, results = 'markup', message = FALSE)
+options(scientific=T, digits = 3) 
+```
+
+```{r ezids, include=F}
+library(tidyverse)
+library('ezids')
+library(dplyr)
+library(ggplot2)
+library(caret)
+library(rpart)
+library(rpart.plot)
+```
+
+# Introduction
+
+Crime has profound implications for the quality of life, public safety, and economic health of a city. Understanding the patterns behind crimes is not only important for law enforcement but also critical for urban planners, policymakers, and community leaders. This analysis builds upon our previous work by diving deeply into the dynamics of felony crimes, offering an evidence-based foundation to develop strategic interventions aimed at fostering safer communities.
+
+In Project 1, we examined 2024 crime data from the Washington DC's open data portal, which provides detailed incident-level reports, including offense type, time, and location. Our analysis uncovered key insights such as neighborhood disparities, seasonal crime trends, and the most frequently reported offenses. We also explored the correlation between crime type and time of day, identifying neighborhoods with the highest homicide rates. These findings revealed an uneven distribution of crime, with certain offenses occurring more frequently at specific times, highlighting the need for targeted, time-sensitive policing strategies. This project will focuse specifically on high-severity crimes classified as felonies, analyzing their spatial distribution and temporal dynamics to inform policymakers and law enforcement in developing more effective, targeted interventions.
+
+# Research Questions
+
+Our study examines felony crime patterns by focusing on four key areas: location, time, crime methods, and neighborhood factors. The insights derived from these areas aim to inform actionable strategies.
+
+Research Questions:
+
+1. How do felony counts vary across different police districts and wards in Washington, D.C., during 2024?
+2. How does the type of felony offense vary by police shift in Washington, D.C., in 2024?
+3. Which neighborhood characteristics are most predictive of felony counts in Washington, D.C.?
+4. Does the method of crime influence the likelihood of felony offenses occurring in different neighborhoods?
+
+# Data Clean-up
+
+We began our analysis by cleaning the dataset, addressing missing values and adjusting data to fit the requirements of our research. 
+
+```{r, echo=TRUE}
+crime_data <- read.csv("Crime_Incidents_in_2024.csv")
+nrow(crime_data)
+colSums(is.na(crime_data))
+missing_crime_data <- crime_data == "" | is.na(crime_data)
+crime_data_clean <- crime_data[!apply(is.na(crime_data), 1, all), ]
+
+crime_data_clean$WARD[is.na(crime_data_clean$WARD)] <- median(crime_data_clean$WARD, na.rm = TRUE)
+crime_data_clean$DISTRICT[is.na(crime_data_clean$DISTRICT)] <- "Unknown"
+crime_data_clean$CENSUS_TRACT[is.na(crime_data_clean$CENSUS_TRACT)] <- median(crime_data_clean$CENSUS_TRACT, na.rm = TRUE)
+
+```
+
+```{r, echo=TRUE}
+crime_data_clean <- crime_data_clean %>% select(-OCTO_RECORD_ID)
+crime_data_clean$PSA[is.na(crime_data_clean$PSA)] <- median(crime_data_clean$PSA, na.rm = TRUE)
+```
+
+# Exploratory Data Analysis
+
+Exploratory Data Analysis (EDA) was used to uncover hidden patterns  within the landscape of crime data. Our analysis uncovered:
+
+- **Geographic Concentration:** Crimes are not uniformly distributed but cluster significantly in central neighborhoods, particularly in Wards 4 through 6, highlighting a critical need for targeted law enforcement resources and community initiatives in these areas.
+
+- **Temporal Trends:** Felony crimes peak notably during the midnight police shift.
+
+- **Crime Typologies:** Theft and auto theft dominate felony occurrences.
+
+
+```{r, echo=TRUE}
+summary(crime_data_clean)
+```
+
+
+```{r, echo=TRUE}
+top_offenses <- crime_data_clean %>%
+  count(OFFENSE, sort = TRUE) %>%
+  top_n(10)
+
+ggplot(top_offenses, aes(x = reorder(OFFENSE, n), y = n)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +  # Horizontal bars for better readability
+  theme_minimal() +
+  labs(title = "Top 10 Most Common Crimes", x = "Offense Type", y = "Count")
+
+```
+
+```{r, echo=TRUE}
+ggplot(crime_data_clean, aes(x = SHIFT, fill = OFFENSE)) +
+  geom_bar(position = "dodge") +
+  theme_minimal() +
+  labs(title = "Crime Distribution by Police Shift", x = "Police Shift", y = "Count")
+
+```
+
+To focus on the most severe offenses, a felony variable was created encompassing homicide, robbery, burglary, assault, sexual abuse, and arson. Of the total crimes, 4,474 were classified as felonies, while 24,820 were non-felonies. 
+
+Although the mean felony rate is low, the high standard deviation indicates substantial variability, suggesting that felonies are unevenly distributed across areas. A median of zero further reinforces that felonies are concentrated in specific locations rather than being widespread.
+
+```{r, echo=TRUE}
+
+crime_data_clean$Is_Felony <- ifelse(crime_data_clean$OFFENSE %in% c("HOMICIDE", "ROBBERY", "BURGLARY", "ASSAULT W/DANGEROUS WEAPON", "SEX ABUSE", "ARSON"), 1, 0)
+
+summary(crime_data_clean)  
+
+crime_data_clean %>%
+  summarise(
+    Total_Felonies = sum(Is_Felony), 
+    Mean_Felonies_Per_Record = mean(Is_Felony), 
+    SD_Felonies = sd(Is_Felony), 
+    Median_Felonies = median(Is_Felony) 
+  )
+
+```
+
+
+# Felony Visualizations
+Produced visualizations of felony distribution, including a heatmap showing the geographic spread of felonies across the Washington DC area and a breakdown by crime method, revealing that most felonies involved a knife or a gun.
+
+```{r, echo=TRUE}
+ggplot(crime_data_clean, aes(x = METHOD, fill = as.factor(Is_Felony))) +
+  geom_bar(position = "fill") +
+  labs(title = "Felony Rates by Crime Method", x = "Crime Method", y = "Proportion of Felonies") +
+  theme_minimal()
+```
+
+```{r, echo=TRUE}
+ggplot(crime_data_clean, aes(x = LONGITUDE, y = LATITUDE, color = as.factor(Is_Felony))) +
+  geom_point(alpha = 0.5) +
+  scale_color_manual(values = c("blue", "red")) +
+  labs(title = "Felony vs. Non-Felony Crime Hotspots",
+       x = "Longitude", y = "Latitude", color = "Crime Type") +
+  theme_minimal()
+```
+
+# Correlation Testing
+
+Next, we conducted a Pearson correlation tests to assess the relationship between felony occurrence and both district and ward variables.
+
+The correlation between district and felony status was 0.142 (p < 2e-16), indicating a weak but statistically significant positive relationship, some districts are more associated with felony crimes.
+
+Similarly, the correlation between ward and felony status was 0.119 (p < 2e-16), also weak but significant, suggesting that felony rates vary slightly by ward.
+
+These results imply that geographic divisions such as districts and wards do influence where felonies occur, though the relationships are modest in strength which is why we decided to exclude them from our predictive model. 
+
+```{r, echo=TRUE}
+felony_by_district <- crime_data_clean %>%
+  group_by(DISTRICT) %>%
+  summarise(Felony_Count = sum(Is_Felony))
+
+felony_by_ward <- crime_data_clean %>%
+  group_by(WARD) %>%
+  summarise(Felony_Count = sum(Is_Felony))
+```
+
+```{r, echo=TRUE}
+
+crime_data_clean$DISTRICT <- as.numeric(as.factor(crime_data_clean$DISTRICT))
+crime_data_clean$WARD <- as.numeric(crime_data_clean$WARD)
+```
+
+```{r, echo=TRUE}
+cor.test(crime_data_clean$DISTRICT, crime_data_clean$Is_Felony)
+cor.test(crime_data_clean$WARD, crime_data_clean$Is_Felony)
+```
+
+
+# Logistic Regression
+
+Given the binomial nature of our crime data (felony: yes/no), a logistic regression model was used to predict felony status based on method, police shift, and neighborhood cluster. Crimes involving knives (estimate = -1.22, p < 0.001) and other methods (estimate = -5.29, p < 0.001) were significantly less likely to be felonies. The midnight shift was associated with higher odds of felonies (estimate = 0.99, p < 0.001), while the evening shift showed no significant effect (p = 0.25). None of the 40+ neighborhood clusters were significant predictors (all p > 0.05). 
+
+Model fit improved substantially, with deviance dropping from 25,041 to 14,910 and an AIC of 15,010, indicating that method and shift are stronger predictors of felony classification than location.
+
+```{r, echo=TRUE}
+log_model <- glm(Is_Felony ~ METHOD + SHIFT + NEIGHBORHOOD_CLUSTER, data = crime_data_clean, family = binomial)
+summary(log_model)
+```
+
+Since the neighborhood cluster showed no significant impact, we tested the model with it removed as a covariate. The results indicate that the new model has a slightly higher residual deviance (15,256 vs. 14,910) and a slightly higher AIC (15,266 vs. 15,010), suggesting that while the new model is still a good fit, it may have slightly less predictive power compared to the previous model.
+
+```{r}
+log_model_2 <- glm(Is_Felony ~ METHOD + SHIFT, data = crime_data_clean, family = binomial)
+summary(log_model_2)
+```
+
+## Model Performance Validation
+
+Since the first model provided a better fit, the analysis continued with it. The model achieved 92.4% accuracy, significantly outperforming the no information rate of 84.7% (p < 2e-16), indicating strong overall predictive power. The kappa score of 0.647 suggests moderate to substantial agreement between predictions and actual outcomes. The model performs very well at identifying non-felonies (sensitivity = 0.993) but is less effective at detecting felonies (specificity = 0.542). Despite this, both positive and negative predictive values are high (92.3% and 93.6%). The balanced accuracy of 0.768 reflects this trade-off, showing good but not perfect performance across both classes.
+
+```{r, echo=TRUE}
+predicted_probs <- predict(log_model, type = "response")
+predicted_felonies <- ifelse(predicted_probs > 0.5, 1, 0)
+confusionMatrix(as.factor(predicted_felonies), as.factor(crime_data_clean$Is_Felony))
+```
+```{r}
+library(pROC)
+roc_curve <- roc(crime_data_clean$Is_Felony, predicted_probs)
+
+plot(roc_curve, main = "ROC Curve", col = "blue", lwd = 2)
+```
+
+# Classification & Regression Trees (CART)
+
+We ran a CART model to classify felony status based on factors such as method, shift, ward, and district. The model achieved 92.4% accuracy, significantly outperforming the no information rate of 84.7% (p < 2e-16), indicating strong predictive performance. It was highly effective at identifying non-felonies (sensitivity = 0.993) but less accurate at detecting felonies (specificity = 0.542). The balanced accuracy of 0.768 and Kappa score of 0.647 suggest moderate to substantial agreement between predictions and actual outcomes.
+
+```{r, echo=TRUE}
+tree_model <- rpart(Is_Felony ~ WARD + DISTRICT + METHOD + SHIFT,
+                    data = crime_data_clean, method = "class")
+
+rpart.plot(tree_model, type = 3, box.palette = "RdBu", fallen.leaves = TRUE)
+
+```
+
+```{r, echo=TRUE}
+predicted_tree <- predict(tree_model, type = "class")
+confusionMatrix(as.factor(predicted_tree), as.factor(crime_data_clean$Is_Felony))
+varImp(tree_model)
+```
+
+
+# Cross-validation for decision tree reliability
+
+We ran a 10-fold cross-validated CART model using ward, district, method, and shift to predict felony classification. The model achieved an accuracy of 92.4% and a Kappa of 0.647, indicating strong predictive performance with moderate to substantial agreement between predictions and actual outcomes. The complexity parameter (cp) of 0 provided the best model fit, while higher values of cp led to reduced performance. These results suggest that the model effectively classifies felony crimes based on the selected predictors.
+
+```{r, echo=TRUE}
+crime_data_clean$Is_Felony <- as.factor(crime_data_clean$Is_Felony)
+train_control <- trainControl(method = "cv", number = 10)
+tree_model_cv <- train(Is_Felony ~ WARD + DISTRICT + METHOD + SHIFT, 
+                       data = crime_data_clean, 
+                       method = "rpart", 
+                       trControl = train_control)
+print(tree_model_cv)
+```
+
+# Summary of Key Findings
+
+In our analysis, we aimed to address key research questions regarding crime patterns in Washington, D.C. during 2024. The focus was on understanding how felony counts vary across different police districts and wards, how felony offenses differ by police shift, and identifying neighborhood characteristics that predict felony counts.
+
+To explore these questions, we conducted an exploratory data analysis (EDA) and tested multiple models, including logistic regression and decision trees (CART). Each model provided valuable insights into the key factors influencing felony classifications. 
+
+### Model Selection
+
+After evaluating various models, logistic regression emerged as the most effective due to its high accuracy, interpretability, and strong performance during cross-validation. The model provided clear insights into how key factors like crime method, police shift, and location influence the likelihood of a crime being classified as a felony.
+
+### Key Model Performance Metrics (10-Fold Cross-Validation):
+
+- **Accuracy (92.4%)**: The model accurately classifies felony and non-felony crimes 92.4% of the time, demonstrating strong overall performance.
+- **Sensitivity (99.3%)**: The model is highly effective at detecting non-felony crimes, with nearly perfect detection of non-felony cases.
+- **Specificity (54.2%)**: The model shows a weaker performance in classifying felonies, with a higher false-negative rate for felonies compared to non-felonies.
+- **Balanced Accuracy (76.8%)**: This metric accounts for the imbalance between felony and non-felony crime occurrences, showing a solid performance across both classes despite the imbalance.
+
+### Insights from the Logistic Regression Model:
+
+- **Crime Method**: Crimes involving guns or knives have a significantly higher probability of being classified as felonies.
+- **Police Shift**: The midnight shift shows a higher likelihood of felonies, suggesting that the time of day plays an important role in felony occurrence.
+- **Location**: Neighborhood and district information did not significantly improve the model’s predictive power, leading to their exclusion as predictors.
+
+In conclusion, the logistic regression provided an interpretable and reliable model for felony classification, with good overall performance metrics. While the model excels at detecting non-felonies, it struggles with felony classification, indicating room for further model refinement or feature exploration.
+
+# Resources
+
+Thotakura, Dr. (2011). Crime: A Conceptual Understanding. Indian Journal of Applied Research. 4. 196-198. 10.15373/2249555X/MAR2014/58. 
+Lu, R., Willits, D., Stohr, M. K., Makin, D., Snyder, J., Lovrich, N., ... & Hemmens, C. (2021). The cannabis effect on crime: Time-series analysis of crime in Colorado and Washington State. Justice Quarterly, 38(4), 565-595.
+
